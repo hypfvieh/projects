@@ -2,9 +2,9 @@
 #########################################################################
 #                                                                       #
 #                                                                       #
-#                      JRE7 Installer Script				#
+#                      JRE/JDK Installer Script				#
 #                                                                       #
-#               Description: Installs Oracle Java 7 from Tarball	# 
+#               Description: Installs Oracle Java JRE/JDK from Tarball	# 
 #                            and registers java/javaws and firefox	#
 #			     plugin in ubuntu/debian 			#
 #			     "update-alternatives" system		#
@@ -12,7 +12,7 @@
 #               (c) copyright 2013	                                #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.8						#
+#		Version: 0.8.1						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -22,7 +22,18 @@
 #  To Public License, Version 2, as published by Sam Hocevar. See       #
 #  http://sam.zoy.org/wtfpl/COPYING for more details.                   #
 #########################################################################
-
+#
+# Currently supported java versions: JRE/JDK 7 and 8
+#    Tested Ubuntu versions (AMD64): 12.04, 14.04, 15.10, 16.04
+#
+#
+# Changelog:
+#
+# 2016-06-27:
+#	v 0.8.1: Added support for ubuntu 16.04	
+#
+#
+#########################################################################
 LANG=C
 TMP="/var/tmp"
 INSTALLDIR="/opt/Oracle_Java"
@@ -104,6 +115,14 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 		MOZPLUGIN="jre"
 	fi
 
+	# Workaround for new firefox-plugins directory (old: mozilla/plugins, new: firefox-addons/plugins)
+	if [ -d "/usr/lib/mozilla/plugins" ] ; then
+		MOZPLUGINDIR="/usr/lib/mozilla/plugins"
+	elif [ -d "/usr/lib/firefox-addons/plugins" ] ; then
+		MOZPLUGINDIR="/usr/lib/firefox-addons/plugins"
+	fi
+
+
 	echo "Creating installdir: $INSTALLDIR/$DIR"
 	mkdir -p "$INSTALLDIR/$DIR"
 	echo "Copying files"
@@ -117,16 +136,20 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 		update-alternatives --set "java" "$INSTALLDIR/$DIR/bin/java"
 		update-alternatives --set "javaws" "$INSTALLDIR/$DIR/bin/javaws" 
 
-		if [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" ] ; then
-			echo "Installing Firefox JAVA Plugin (i386)"
-			update-alternatives --install "/usr/lib/mozilla/plugins/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 1 
-			update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 
-		elif [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" ] ; then
-			echo "Installing Firefox JAVA Plugin (amd64)"
-			update-alternatives --install "/usr/lib/mozilla/plugins/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
-			update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
+		if [ ! -z "$MOZPLUGINDIR" ] ; then
+			if [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" ] ; then
+				echo "Installing Firefox JAVA Plugin (i386)"
+				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 1 
+				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 
+			elif [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" ] ; then
+				echo "Installing Firefox JAVA Plugin (amd64)"
+				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
+				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
+			else
+				echo "No Java Browser-Plugin Found!"
+			fi
 		else
-			echo "No Java Browser-Plugin Found!"
+			echo "Cannot install firefox java plugin, don't know where to install it to"
 		fi
 
 		# check if this is a JDK, set java compiler to jdk
@@ -138,9 +161,16 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 			SYMLINKTARGET="jre"
 
 		fi
+		# add jar commandline tool
 		if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
 			update-alternatives --install "/usr/bin/jar" "jar" "$INSTALLDIR/$DIR/bin/jar" 1
 			update-alternatives --set "jar" "$INSTALLDIR/$DIR/bin/jar"
+		fi
+
+		# add java process list tool
+		if [ -f "$INSTALLDIR/$DIR/bin/jps" ] ; then
+			update-alternatives --install "/usr/bin/jps" "jps" "$INSTALLDIR/$DIR/bin/jps" 1
+			update-alternatives --set "jps" "$INSTALLDIR/$DIR/bin/jps"
 		fi
 
 		if [ ! -z "$BASEVERSION" ] ; then
