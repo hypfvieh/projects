@@ -9,10 +9,10 @@
 #			     plugin in ubuntu/debian 			#
 #			     "update-alternatives" system		#
 #                                                                       #
-#               (c) copyright 2013	                                #
+#               (c) copyright 2013-2017	                                #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.8.1						#
+#		Version: 0.8.2						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -23,11 +23,14 @@
 #  http://sam.zoy.org/wtfpl/COPYING for more details.                   #
 #########################################################################
 #
-# Currently supported java versions: JRE/JDK 7 and 8
+# Currently supported java versions: JRE/JDK 7, 8 and 9
 #    Tested Ubuntu versions (AMD64): 12.04, 14.04, 15.10, 16.04
 #
 #
 # Changelog:
+#
+# 2017-09-26:
+#	v 0.8.2: Added support for jdk 9
 #
 # 2016-06-27:
 #	v 0.8.1: Added support for ubuntu 16.04	
@@ -80,14 +83,23 @@ echo "Extracting tarball"
 tar xfz "$FILE" -C "$TMP/$$"
 DIR=$(tar tzf "$FILE" | head -n 1)
 
-# Try to assume Java base version (6, 7 or 8)
+# Try to assume Java base version (6, 7, 8, 9)
 if [ ! -z "$(echo $DIR | grep '1.7')" ] ; then
 	BASEVERSION=7
 elif [ ! -z "$(echo $DIR | grep '1.6')" ] ; then
 	BASEVERSION=6
 elif [ ! -z "$(echo $DIR | grep '1.8')" ] ; then
 	BASEVERSION=8
+else # starting with jdk9, version of java was really called "9" instead of "1.9"
+	DIR=$(tar tzf "$FILE" | head -n 1 | cut -d "/" -f 1)
+	if [ ! -z "$(echo $DIR | cut -d '-' -f 2)" ] ; then
+		BASEVERSION=$(echo $DIR | cut -d '-' -f 2)
+	else
+		echo "Unknown base version $DIR";
+		exit 1
+	fi
 fi
+
 
 # Check if target already exists
 echo "Checking if install directory exists"
@@ -145,6 +157,11 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 				echo "Installing Firefox JAVA Plugin (amd64)"
 				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
 				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
+			elif [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" ] ; then
+				echo "Installing Firefox JAVA Plugin"
+				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" 1 
+				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" 
+
 			else
 				echo "No Java Browser-Plugin Found!"
 			fi
