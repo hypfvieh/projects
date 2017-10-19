@@ -12,7 +12,7 @@
 #               (c) copyright 2013-2017	                                #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.8.2						#
+#		Version: 0.9.0						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -29,6 +29,15 @@
 #
 # Changelog:
 #
+# 2017-10-19:
+#	v 0.9.0: Fixed symlink issue with jdk 9 when jdk has minor version too
+#		 Changed behavior: Ownership/group of installation directory will be changed to root (can be disabled, see below)
+#		 Added flag "--disable-alternatives" --> disable 'update-alternatives' so java is only 'extracted' but not set as default java version
+#		 Added flag "--alternatives-use-symlink" --> Use symlinked path in 'update-alternatives' instead of installation path itself (will override --no-symlink)
+#		 Added flag "--no-symlink" --> Disable symlinking at all
+#		 Added flag "--disable-change-permission" --> Disable changing owner/group on installation directory
+#		 Added flag "--set-user=USERNAME" --> Specify the user which should own the installation directory
+#		 Added flag "--set-group=GROUP" --> Specify the group which should own the installation directory
 # 2017-09-26:
 #	v 0.8.2: Added support for jdk 9
 #
@@ -41,6 +50,12 @@ LANG=C
 TMP="/var/tmp"
 INSTALLDIR="/opt/Oracle_Java"
 
+ALLOW_ALTERNATIVES=1
+ALLOW_SYMLINK=1
+ALLOW_CHOWN=1
+
+ALTERNATIVES_USE_SYMLINK=0
+
 if [ ! -f /etc/debian_version ] ; then
 	echo "This installer is for debian/ubuntu based systems only!"
 	exit 3
@@ -51,14 +66,59 @@ if [ $(whoami) != "root" ] ; then
 	exit 2
 fi
 
-if [ -z "$1" ] || [ ! -f "$1" ] ; then
-	echo "No java-package given"
-	exit 1
-fi
 
 if [ ! -d "$TMP" ] ; then
 	echo "No temp directory found, please create $TMP first!"
 	exit 2
+fi
+
+JAVAOWNER=root
+JAVAGROUP=root
+
+OLDIFS=$IFS
+IFS=$'\n'
+for i in "${@}" ; do
+        if [ "$i" = "--disable-alternatives" ] ; then
+                ALLOW_ALTERNATIVES=0
+		echo ">> Usage of 'update-alternatives' is disabled"
+        elif [ "$i" = "--disable-change-permission" ] ; then
+                ALLOW_CHOWN=0
+		echo ">> Permission changing is disabled"
+        elif [ "$i" = "--no-symlink" ] ; then
+                ALLOW_SYMLINK=0
+		echo ">> Symlink creation is disabled"
+        elif [ "$i" = "--alternatives-use-symlink" ] ; then
+                ALTERNATIVES_USE_SYMLINK=1
+		if [ "$ALLOW_SYMLINK" -eq 0 ] ; then
+			echo ">> Overriding --no-symlink option, symlinks are now enabled"
+		fi
+		ALLOW_SYMLINK=1
+		echo ">> 'update-alternatives' will use symlink instead of installation directory"
+        elif [ -f "$i" ] && [ -z "$FILE" ] ; then
+                FILE=$i
+		echo ">> Using tarball: $FILE"
+	elif [ "${i:0:11}" = "--set-user=" ] ; then
+		JAVAOWNER=${i:12}
+		echo ">> Using user '$JAVAOWNER' as directory owner"
+	elif [ "${i:0:12}" = "--set-group=" ] ; then
+		JAVAGROUP=${i:13}
+		echo ">> Using group '$JAVAGROUP' as directory group owner"
+        elif [ "$i" = "--help" ] || [ "$i" = "-h" ] ; then 
+                echo "Supported flags: "
+                echo -en "\t--disable-alternatives\t\t Do not use 'update-alternatives to register installation to system [default: enabled]\n"
+                echo -en "\t--disable-change-permission\t Do not change owner/group of installation [default: enabled]\n" 
+                echo -en "\t--no-symlink\t\t\t Do not create a symlink from this installation with major version name (e.g. jdk-1.8.0_151 linked to jdk8), [default:enabled]\n"
+                echo -en "\t--alternatives-use-symlink\t 'update-alternatives' will use the symlinked version for installation (see above), will override --no-symlink [default: disabled]\n"
+                echo -en "\t--set-user=USERNAME\t\t Change ownership of installed java to given user [default: root]\n"
+                echo -en "\t--set-group=GROUP\t\t Change group of installed java to given group [default: root]\n"
+                exit 1
+        fi
+done
+IFS=$OLDIFS
+
+if [ -z "$FILE" ] || [ ! -f "$FILE" ] ; then
+	echo "No java tarball given or tarball could not be found"
+	exit 1
 fi
 
 
@@ -79,27 +139,22 @@ fi
 
 
 # We have a tarball, so extract it temporarily
-echo "Extracting tarball"
-tar xfz "$FILE" -C "$TMP/$$"
-DIR=$(tar tzf "$FILE" | head -n 1)
+echo "Checking java version"
+DIR=$(tar tzf "$FILE" | head -n 1 | cut -d "/" -f 1)
 
-# Try to assume Java base version (6, 7, 8, 9)
-if [ ! -z "$(echo $DIR | grep '1.7')" ] ; then
-	BASEVERSION=7
-elif [ ! -z "$(echo $DIR | grep '1.6')" ] ; then
-	BASEVERSION=6
-elif [ ! -z "$(echo $DIR | grep '1.8')" ] ; then
-	BASEVERSION=8
-else # starting with jdk9, version of java was really called "9" instead of "1.9"
-	DIR=$(tar tzf "$FILE" | head -n 1 | cut -d "/" -f 1)
-	if [ ! -z "$(echo $DIR | cut -d '-' -f 2)" ] ; then
-		BASEVERSION=$(echo $DIR | cut -d '-' -f 2)
-	else
-		echo "Unknown base version $DIR";
-		exit 1
+BASEVERSION=$(echo $DIR | cut -d "/" -f 1 | sed "s/[jredk\-]//g")
+if [ ! -z "$(echo $BASEVERSION | grep '.')" ] ; then
+	SYMLINKVER=$(echo $BASEVERSION | cut -d "." -f 1)
+
+	if [ "$SYMLINKVER" = "1" ] ; then # java version below 9 has version info like "1.7"
+		SYMLINKVER=$(echo $BASEVERSION | cut -d "." -f 2)
 	fi
 fi
 
+echo "Found java version: $BASEVERSION"
+
+echo "Extracting tarball"
+tar xfz "$FILE" -C "$TMP/$$"
 
 # Check if target already exists
 echo "Checking if install directory exists"
@@ -119,6 +174,7 @@ fi
 
 # Check if we have all files required for further actions
 echo "Check for required files"
+
 if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 
 	if [ -f "$TMP/$$/$DIR/lib/"*"/libnpjp2.so" ] ; then
@@ -138,64 +194,81 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 	echo "Creating installdir: $INSTALLDIR/$DIR"
 	mkdir -p "$INSTALLDIR/$DIR"
 	echo "Copying files"
-	mv "$TMP/$$/$DIR/"* "$INSTALLDIR/$DIR/"
+	mv "$TMP/$$/$DIR/"* "$INSTALLDIR/$DIR/"	
 
 	if [ $? -eq 0 ] ; then
-		echo "Installing alternatives for 'java' and 'javaws'"
-		update-alternatives --install "/usr/bin/java" "java" "$INSTALLDIR/$DIR/bin/java" 1
-		update-alternatives --install "/usr/bin/javaws" "javaws" "$INSTALLDIR/$DIR/bin/javaws" 1
-		echo "Setting 'java' and 'javaws' to Oracle Java"
-		update-alternatives --set "java" "$INSTALLDIR/$DIR/bin/java"
-		update-alternatives --set "javaws" "$INSTALLDIR/$DIR/bin/javaws" 
-
-		if [ ! -z "$MOZPLUGINDIR" ] ; then
-			if [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" ] ; then
-				echo "Installing Firefox JAVA Plugin (i386)"
-				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 1 
-				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 
-			elif [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" ] ; then
-				echo "Installing Firefox JAVA Plugin (amd64)"
-				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
-				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
-			elif [ -f "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" ] ; then
-				echo "Installing Firefox JAVA Plugin"
-				update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" 1 
-				update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/libnpjp2.so" 
-
-			else
-				echo "No Java Browser-Plugin Found!"
+		if [ "$ALLOW_CHOWN" -eq 1 ] ; then
+			chown -R $JAVAOWNER:$JAVAGROUP "$INSTALLDIR/$DIR/"
+			if [ $? -ne 0 ] ; then
+				echo "Error setting ownership of new installation to $JAVAOWNER:$JAVAGROUP"
+				exit 1
 			fi
-		else
-			echo "Cannot install firefox java plugin, don't know where to install it to"
 		fi
-
-		# check if this is a JDK, set java compiler to jdk
+	
 		if [ -f "$INSTALLDIR/$DIR/bin/javac" ] ; then
-			update-alternatives --install "/usr/bin/javac" "javac" "$INSTALLDIR/$DIR/bin/javac" 1
-			update-alternatives --set "javac" "$INSTALLDIR/$DIR/bin/javac"
 			SYMLINKTARGET="jdk"
 		else
 			SYMLINKTARGET="jre"
-
-		fi
-		# add jar commandline tool
-		if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
-			update-alternatives --install "/usr/bin/jar" "jar" "$INSTALLDIR/$DIR/bin/jar" 1
-			update-alternatives --set "jar" "$INSTALLDIR/$DIR/bin/jar"
 		fi
 
-		# add java process list tool
-		if [ -f "$INSTALLDIR/$DIR/bin/jps" ] ; then
-			update-alternatives --install "/usr/bin/jps" "jps" "$INSTALLDIR/$DIR/bin/jps" 1
-			update-alternatives --set "jps" "$INSTALLDIR/$DIR/bin/jps"
-		fi
-
-		if [ ! -z "$BASEVERSION" ] ; then
-			echo "Creating symlinks to $INSTALLDIR/$SYMLINKTARGET$BASEVERSION"
-			if [ -L "$INSTALLDIR/$SYMLINKTARGET$BASEVERSION" ] ; then
-				rm -f "$INSTALLDIR/$SYMLINKTARGET$BASEVERSION"
+		if [ "$ALLOW_SYMLINK" -eq 1 ] && [ ! -z "$SYMLINKVER" ] ; then
+			echo "Creating symlinks to $INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
+			if [ -L "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER" ] ; then
+				rm -f "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
 			fi
-			ln -s "$INSTALLDIR/$DIR/" "$INSTALLDIR/$SYMLINKTARGET$BASEVERSION"
+			ln -s "$INSTALLDIR/$DIR/" "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
+		fi
+
+		if [ "$ALTERNATIVES_USE_SYMLINK" -eq 1 ] ; then
+			UPDATEALTERNATIVESPATH="$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
+		else
+			UPDATEALTERNATIVESPATH="$INSTALLDIR/$DIR"
+		fi
+
+		if [ $ALLOW_ALTERNATIVES -eq 1 ] ; then
+			echo "Installing alternatives for 'java' and 'javaws'"
+			update-alternatives --install "/usr/bin/java" "java" "$UPDATEALTERNATIVESPATH/bin/java" 1
+			update-alternatives --install "/usr/bin/javaws" "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 1
+			echo "Setting 'java' and 'javaws' to Oracle Java"
+			update-alternatives --set "java" "$UPDATEALTERNATIVESPATH/bin/java"
+			update-alternatives --set "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 
+		
+			# add jar commandline tool
+			if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
+				update-alternatives --install "/usr/bin/jar" "jar" "$UPDATEALTERNATIVESPATH/bin/jar" 1
+				update-alternatives --set "jar" "$UPDATEALTERNATIVESPATH/bin/jar"
+			fi
+
+			# add java process list tool
+			if [ -f "$INSTALLDIR/$DIR/bin/jps" ] ; then
+				update-alternatives --install "/usr/bin/jps" "jps" "$UPDATEALTERNATIVESPATH/bin/jps" 1
+				update-alternatives --set "jps" "$UPDATEALTERNATIVESPATH/bin/jps"
+			fi
+
+			if [ ! -z "$MOZPLUGINDIR" ] ; then
+				if [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/i386/libnpjp2.so" ] ; then
+					echo "Installing Firefox JAVA Plugin (i386)"
+					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/i386/libnpjp2.so" 1 
+					update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 
+				elif [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" ] ; then
+					echo "Installing Firefox JAVA Plugin (amd64)"
+					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
+					update-alternatives --set "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
+				elif [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" ] ; then
+					echo "Installing Firefox JAVA Plugin"
+					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 1 
+					update-alternatives --set "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 
+				else
+					echo "No Java Browser-Plugin Found!"
+				fi
+			else
+				echo "Cannot install firefox java plugin, don't know where to install it to"
+			fi
+
+			if [ -f "$INSTALLDIR/$DIR/bin/javac" ] ; then
+				update-alternatives --install "/usr/bin/javac" "javac" "$UPDATEALTERNATIVESPATH/bin/javac" 1
+				update-alternatives --set "javac" "$UPDATEALTERNATIVESPATH/bin/javac"
+			fi
 		fi
 
 		rm -rf "$TMP/$$"
