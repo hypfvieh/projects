@@ -9,10 +9,10 @@
 #			     plugin in ubuntu/debian 			#
 #			     "update-alternatives" system		#
 #                                                                       #
-#               (c) copyright 2013-2017	                                #
+#               (c) copyright 2013-2018	                                #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.9.0						#
+#		Version: 0.9.1						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -29,6 +29,9 @@
 #
 # Changelog:
 #
+# 2018-04-24:
+#       v 0.9.1: Added update-alternative call for javadoc
+
 # 2017-10-19:
 #	v 0.9.0: Fixed symlink issue with jdk 9 when jdk has minor version too
 #		 Changed behavior: Ownership/group of installation directory will be changed to root (can be disabled, see below)
@@ -237,6 +240,12 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 			if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
 				update-alternatives --install "/usr/bin/jar" "jar" "$UPDATEALTERNATIVESPATH/bin/jar" 1
 				update-alternatives --set "jar" "$UPDATEALTERNATIVESPATH/bin/jar"
+			fi
+			
+			# add javadoc commandline tool
+			if [ -f "$INSTALLDIR/$DIR/bin/javadoc" ] ; then
+				update-alternatives --install "/usr/bin/javadoc" "javadoc" "$UPDATEALTERNATIVESPATH/bin/javadoc" 1
+				update-alternatives --set "javadoc" "$UPDATEALTERNATIVESPATH/bin/javadoc"
 			fi
 
 			# add java process list tool
