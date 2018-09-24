@@ -29,9 +29,16 @@
 #
 # Changelog:
 #
+# 2018-09-24:
+#	v 0.9.2: Added support for openjdk
+#		 Added support for java/openjdk 11
+#                Added flag "--install-dir" to choose a different installation base directory (otherwise target will be either /opt/openJDK or /opt/Oracle_Java depending on detected release)
+#		 Added flag "--openjdk" to force installer to assume downloaded package is OpenJDK
+#		 Added flag "--oracleJava" to force installer to assume downloaded package is Oracle Java release
+#
 # 2018-04-24:
 #       v 0.9.1: Added update-alternative call for javadoc
-
+#
 # 2017-10-19:
 #	v 0.9.0: Fixed symlink issue with jdk 9 when jdk has minor version too
 #		 Changed behavior: Ownership/group of installation directory will be changed to root (can be disabled, see below)
@@ -78,6 +85,10 @@ fi
 JAVAOWNER=root
 JAVAGROUP=root
 
+MANUALDIR=0
+OPENJDK=0
+FORCERELEASE=0
+
 OLDIFS=$IFS
 IFS=$'\n'
 for i in "${@}" ; do
@@ -100,12 +111,45 @@ for i in "${@}" ; do
         elif [ -f "$i" ] && [ -z "$FILE" ] ; then
                 FILE=$i
 		echo ">> Using tarball: $FILE"
+		if [ "$FORCERELEASE" -eq 0 ] ; then
+			FNBGN=$(basename "$FILE")
+			FNBGN=${FNBGN:0:7}
+			FNBGN=$(echo $FNBGN | tr '[:upper:]' '[:lower:]')
+			if [ "$FNBGN" = "openjdk" ] ; then
+				echo ">> Detected OpenJDK Build"
+				OPENJDK=1
+				if [ "$MANUALDIR" -eq 0 ] ; then
+					INSTALLDIR="/opt/openJDK"
+				fi
+			else
+				echo ">> Guessing this is a Oracle JDK/JRE"
+			fi
+		else
+			# release is forced to be openjdk and no manual install directory is given
+			if [ "$OPENJDK" -eq 1 && "$MANUALDIR" -eq 0 ] ; then
+				INSTALLDIR="/opt/openJDK"
+			fi
+			# otherwise use default (oracle) directory or provided install base directory
+		fi
+		echo ">> Installing to $INSTALLDIR"
 	elif [ "${i:0:11}" = "--set-user=" ] ; then
 		JAVAOWNER=${i:12}
 		echo ">> Using user '$JAVAOWNER' as directory owner"
 	elif [ "${i:0:12}" = "--set-group=" ] ; then
 		JAVAGROUP=${i:13}
 		echo ">> Using group '$JAVAGROUP' as directory group owner"
+	elif [ "${i:0:14}" = "--install-dir=" ] ; then
+		INSTALLDIR=${i:15}
+		echo ">> Using install dir '$INSTALLDIR' as target directory"
+		MANUALDIR=1
+	elif [ "${i:0:9}" = "--openjdk" ] ; then
+		echo ">> Forcing install routine for OpenJDK"
+		OPENJDK=1
+		FORCERELEASE=1
+	elif [ "${i:0:12}" = "--oracleJava" ] ; then
+		echo ">> Forcing install routine for Oracle Java"
+		OPENJDK=0
+		FORCERELEASE=0
         elif [ "$i" = "--help" ] || [ "$i" = "-h" ] ; then 
                 echo "Supported flags: "
                 echo -en "\t--disable-alternatives\t\t Do not use 'update-alternatives to register installation to system [default: enabled]\n"
@@ -178,7 +222,13 @@ fi
 # Check if we have all files required for further actions
 echo "Check for required files"
 
-if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
+if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
+
+	# check for javaws later as this binary is no longer included in jdk builds
+	HAS_JAVAWS=0
+	if [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
+		HAS_JAVAWS=1
+	fi
 
 	if [ -f "$TMP/$$/$DIR/lib/"*"/libnpjp2.so" ] ; then
 		MOZPLUGIN=""
@@ -229,12 +279,19 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 		fi
 
 		if [ $ALLOW_ALTERNATIVES -eq 1 ] ; then
-			echo "Installing alternatives for 'java' and 'javaws'"
+			
+			echo "Installing alternatives for 'java'"
 			update-alternatives --install "/usr/bin/java" "java" "$UPDATEALTERNATIVESPATH/bin/java" 1
-			update-alternatives --install "/usr/bin/javaws" "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 1
-			echo "Setting 'java' and 'javaws' to Oracle Java"
+			echo -en "Updating 'java'"
 			update-alternatives --set "java" "$UPDATEALTERNATIVESPATH/bin/java"
-			update-alternatives --set "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 
+
+			if [ "$HAS_JAVAWS" -eq 1 ] ; then
+				echo "Installing alternatives for 'javaws'"
+				update-alternatives --install "/usr/bin/javaws" "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 1
+
+				echo "Updating 'javaws'"
+				update-alternatives --set "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 
+			fi
 		
 			# add jar commandline tool
 			if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
@@ -268,7 +325,7 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] && [ -f "$TMP/$$/$DIR/bin/javaws" ] ; then
 					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 1 
 					update-alternatives --set "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 
 				else
-					echo "No Java Browser-Plugin Found!"
+					echo "No Java Browser-Plugin found (this is the regular case in java versions > 1.8)"
 				fi
 			else
 				echo "Cannot install firefox java plugin, don't know where to install it to"
