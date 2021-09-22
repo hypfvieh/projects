@@ -9,10 +9,10 @@
 #			     plugin in ubuntu/debian 			#
 #			     "update-alternatives" system		#
 #                                                                       #
-#               (c) copyright 2013-2018	                                #
+#               (c) copyright 2013-2021                                 #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.9.1						#
+#		Version: 0.9.2						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -23,11 +23,17 @@
 #  http://sam.zoy.org/wtfpl/COPYING for more details.                   #
 #########################################################################
 #
-# Currently supported java versions: JRE/JDK 7, 8 and 9
-#    Tested Ubuntu versions (AMD64): 12.04, 14.04, 15.10, 16.04
+# Currently supported java versions: JRE/JDK 1.7; 1.8, 9 - 17
+#    Tested Ubuntu versions (AMD64): 21.04
 #
 #
 # Changelog:
+#
+# 2021-09-22:
+#	v 0.9.3: Fixed issue with '+' sign in directories when detecting name for symlink
+#		 Changed: update-alternatives path uses symlink path by default
+#		 Changed: flag --alternatives-use-symlink replaced by --disable-alternatives-use-symlink
+#		 Removed: Support for java-applet installation (firefox versions in the last few years do no longer support this API)
 #
 # 2018-09-24:
 #	v 0.9.2: Added support for openjdk
@@ -64,7 +70,7 @@ ALLOW_ALTERNATIVES=1
 ALLOW_SYMLINK=1
 ALLOW_CHOWN=1
 
-ALTERNATIVES_USE_SYMLINK=0
+ALTERNATIVES_USE_SYMLINK=1
 
 if [ ! -f /etc/debian_version ] ; then
 	echo "This installer is for debian/ubuntu based systems only!"
@@ -100,14 +106,10 @@ for i in "${@}" ; do
 		echo ">> Permission changing is disabled"
         elif [ "$i" = "--no-symlink" ] ; then
                 ALLOW_SYMLINK=0
-		echo ">> Symlink creation is disabled"
-        elif [ "$i" = "--alternatives-use-symlink" ] ; then
-                ALTERNATIVES_USE_SYMLINK=1
-		if [ "$ALLOW_SYMLINK" -eq 0 ] ; then
-			echo ">> Overriding --no-symlink option, symlinks are now enabled"
-		fi
-		ALLOW_SYMLINK=1
-		echo ">> 'update-alternatives' will use symlink instead of installation directory"
+		echo ">> Symlink creation is disabled, this also disables usage of symlinks in update-alternatives"
+        elif [ "$i" = "--disable-alternatives-use-symlink" ] ; then
+                ALTERNATIVES_USE_SYMLINK=0
+		echo ">> 'update-alternatives' will NOT use symlink instead of installation directory"
         elif [ -f "$i" ] && [ -z "$FILE" ] ; then
                 FILE=$i
 		echo ">> Using tarball: $FILE"
@@ -191,6 +193,11 @@ DIR=$(tar tzf "$FILE" | head -n 1 | cut -d "/" -f 1)
 
 BASEVERSION=$(echo $DIR | cut -d "/" -f 1 | sed "s/[jredk\-]//g")
 if [ ! -z "$(echo $BASEVERSION | grep '.')" ] ; then
+
+	if [ ! -z "$(echo $BASEVERSION | grep "+")" ] ; then
+                BASEVERSION=$(echo $BASEVERSION | cut -d '+' -f 1)
+        fi
+
 	SYMLINKVER=$(echo $BASEVERSION | cut -d "." -f 1)
 
 	if [ "$SYMLINKVER" = "1" ] ; then # java version below 9 has version info like "1.7"
@@ -264,18 +271,19 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
 			SYMLINKTARGET="jre"
 		fi
 
+		UPDATEALTERNATIVESPATH="$INSTALLDIR/$DIR"
 		if [ "$ALLOW_SYMLINK" -eq 1 ] && [ ! -z "$SYMLINKVER" ] ; then
 			echo "Creating symlinks to $INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
+			# remove existing symlinks first
 			if [ -L "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER" ] ; then
 				rm -f "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
 			fi
 			ln -s "$INSTALLDIR/$DIR/" "$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
-		fi
 
-		if [ "$ALTERNATIVES_USE_SYMLINK" -eq 1 ] ; then
-			UPDATEALTERNATIVESPATH="$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
-		else
-			UPDATEALTERNATIVESPATH="$INSTALLDIR/$DIR"
+			# use symlink path in alternatives if enabled
+			if [ "$ALTERNATIVES_USE_SYMLINK" -eq 1 ] ; then
+				UPDATEALTERNATIVESPATH="$INSTALLDIR/$SYMLINKTARGET$SYMLINKVER"
+			fi
 		fi
 
 		if [ $ALLOW_ALTERNATIVES -eq 1 ] ; then
@@ -311,26 +319,7 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
 				update-alternatives --set "jps" "$UPDATEALTERNATIVESPATH/bin/jps"
 			fi
 
-			if [ ! -z "$MOZPLUGINDIR" ] ; then
-				if [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/i386/libnpjp2.so" ] ; then
-					echo "Installing Firefox JAVA Plugin (i386)"
-					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/i386/libnpjp2.so" 1 
-					update-alternatives --set "mozilla-javaplugin.so" "$INSTALLDIR/$DIR/$MOZPLUGIN/lib/i386/libnpjp2.so" 
-				elif [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" ] ; then
-					echo "Installing Firefox JAVA Plugin (amd64)"
-					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" 1 
-					update-alternatives --set "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/amd64/libnpjp2.so" 
-				elif [ -f "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" ] ; then
-					echo "Installing Firefox JAVA Plugin"
-					update-alternatives --install "$MOZPLUGINDIR/mozilla-javaplugin.so" "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 1 
-					update-alternatives --set "mozilla-javaplugin.so" "$UPDATEALTERNATIVESPATH/$MOZPLUGIN/lib/libnpjp2.so" 
-				else
-					echo "No Java Browser-Plugin found (this is the regular case in java versions > 1.8)"
-				fi
-			else
-				echo "Cannot install firefox java plugin, don't know where to install it to"
-			fi
-
+			# java compiler
 			if [ -f "$INSTALLDIR/$DIR/bin/javac" ] ; then
 				update-alternatives --install "/usr/bin/javac" "javac" "$UPDATEALTERNATIVESPATH/bin/javac" 1
 				update-alternatives --set "javac" "$UPDATEALTERNATIVESPATH/bin/javac"
