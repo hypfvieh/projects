@@ -11,7 +11,7 @@
 #               (c) copyright 2021                                      #
 #                 by Maniac                                             #
 #                                                                       #
-#               Version: 0.0.1                                          #
+#               Version: 0.0.2                                          #
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -23,6 +23,8 @@
 #########################################################################
 # Changelog:
 #
+# 2021-09-24:
+#	v 0.0.2: Show 'export JAVA_HOME' commandline after execution
 # 2021-09-22:
 #       v 0.0.1: Initial release
 #
@@ -64,6 +66,12 @@ for i in $(update-alternatives --list javac) ; do
 			update-alternatives --set $p "$DIR/$p"
 		done
 		HOMEDIR=$(dirname "$DIR")
-		export JAVA_HOME="$HOMEDIR"
+		HOMEDIR=$(echo $HOMEDIR | sed "s%//%/%g")
+
+		echo
+		echo
+		echo "To update your current environment, execute:"
+		echo
+		echo export JAVA_HOME="$HOMEDIR"
 	fi
 done
