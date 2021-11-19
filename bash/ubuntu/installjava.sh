@@ -12,7 +12,7 @@
 #               (c) copyright 2013-2021                                 #
 #                 by Maniac                                             #
 #                                                                       #
-#		Version: 0.9.2						#
+#		Version: 0.9.4						#
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -28,6 +28,10 @@
 #
 #
 # Changelog:
+#
+# 2021-11-19:
+#	v 0.9.4: Updated: list of programs alternatives are added fore
+#                Removed: leftovers of java firefox plugin
 #
 # 2021-09-22:
 #	v 0.9.3: Fixed issue with '+' sign in directories when detecting name for symlink
