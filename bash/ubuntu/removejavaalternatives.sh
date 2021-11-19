@@ -11,7 +11,7 @@
 #               (c) copyright 2021                                      #
 #                 by Maniac                                             #
 #                                                                       #
-#               Version: 0.0.1                                          #
+#               Version: 0.0.2                                          #
 #                                                                       #
 #########################################################################
 #                       License                                         #
@@ -23,6 +23,9 @@
 #########################################################################
 # Changelog:
 #
+# 2021-11-19:
+#       v 0.0.2: Added jdeps, jlink, jpackage and jconsole to list of 
+#                applications to change
 # 2021-09-22:
 #       v 0.0.1: Initial release
 #
@@ -41,7 +44,7 @@ if [ "$(whoami)" != "root" ] ; then
 	exit 1
 fi
 
-JAVA_PROCS=( "java" "javac" "javaws" "javadoc" "jps" "jar" )
+JAVA_PROCS=( "java" "javac" "javaws" "javadoc" "jps" "jar" "jdeps" "jlink" "jpackage" "jconsole" )
 
 if [ -z "$1" ] ; then
 	echo "Java version required"

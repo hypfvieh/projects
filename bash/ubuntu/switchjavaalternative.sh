@@ -23,6 +23,9 @@
 #########################################################################
 # Changelog:
 #
+# 2021-11-19:
+#       v 0.0.3: Added jdeps, jlink, jpackage and jconsole to list of
+#                applications switched
 # 2021-09-24:
 #	v 0.0.2: Show 'export JAVA_HOME' commandline after execution
 # 2021-09-22:
@@ -44,7 +47,7 @@ if [ "$(whoami)" != "root" ] ; then
 	exit 1
 fi
 
-JAVA_PROCS=( "java" "javac" "javaws" "javadoc" "jps" "jar" )
+JAVA_PROCS=( "java" "javac" "javaws" "javadoc" "jps" "jar" "jdeps" "jlink" "jpackage" "jconsole" )
 
 if [ -z "$1" ] ; then
         echo "Java version required"
