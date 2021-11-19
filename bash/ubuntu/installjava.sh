@@ -276,10 +276,12 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
 			JAVA_PROCS=( "java" "javac" "javadoc" "jps" "jar" "jdeps" "jlink" "jpackage" "jconsole" )
 
 			for i in ${JAVA_PROCS[@]} ; do
-				echo "Installing alternatives for '$i'"
-				update-alternatives --install "/usr/bin/$i" "$i" "$UPDATEALTERNATIVESPATH/bin/$i" 1
-				echo "Updating '$i'"
-				update-alternatives --set "$i" "$UPDATEALTERNATIVESPATH/bin/$i"
+				if [ -e "$UPDATEALTERNATIVESPATH/bin/$i" ] ; then
+					echo "Installing alternatives for '$i'"
+					update-alternatives --install "/usr/bin/$i" "$i" "$UPDATEALTERNATIVESPATH/bin/$i" 1
+					echo "Enabling new alternative entry for '$i'"
+					update-alternatives --set "$i" "$UPDATEALTERNATIVESPATH/bin/$i"
+				fi
 			done
 		fi
 
