@@ -237,20 +237,6 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
 		HAS_JAVAWS=1
 	fi
 
-	if [ -f "$TMP/$$/$DIR/lib/"*"/libnpjp2.so" ] ; then
-		MOZPLUGIN=""
-	elif [ -f "$TMP/$$/$DIR/jre/lib/"*"/libnpjp2.so" ] ; then
-		MOZPLUGIN="jre"
-	fi
-
-	# Workaround for new firefox-plugins directory (old: mozilla/plugins, new: firefox-addons/plugins)
-	if [ -d "/usr/lib/mozilla/plugins" ] ; then
-		MOZPLUGINDIR="/usr/lib/mozilla/plugins"
-	elif [ -d "/usr/lib/firefox-addons/plugins" ] ; then
-		MOZPLUGINDIR="/usr/lib/firefox-addons/plugins"
-	fi
-
-
 	echo "Creating installdir: $INSTALLDIR/$DIR"
 	mkdir -p "$INSTALLDIR/$DIR"
 	echo "Copying files"
@@ -287,43 +273,14 @@ if [ -f "$TMP/$$/$DIR/bin/java" ] ; then
 		fi
 
 		if [ $ALLOW_ALTERNATIVES -eq 1 ] ; then
-			
-			echo "Installing alternatives for 'java'"
-			update-alternatives --install "/usr/bin/java" "java" "$UPDATEALTERNATIVESPATH/bin/java" 1
-			echo -en "Updating 'java'"
-			update-alternatives --set "java" "$UPDATEALTERNATIVESPATH/bin/java"
+			JAVA_PROCS=( "java" "javac" "javadoc" "jps" "jar" "jdeps" "jlink" "jpackage" "jconsole" )
 
-			if [ "$HAS_JAVAWS" -eq 1 ] ; then
-				echo "Installing alternatives for 'javaws'"
-				update-alternatives --install "/usr/bin/javaws" "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 1
-
-				echo "Updating 'javaws'"
-				update-alternatives --set "javaws" "$UPDATEALTERNATIVESPATH/bin/javaws" 
-			fi
-		
-			# add jar commandline tool
-			if [ -f "$INSTALLDIR/$DIR/bin/jar" ] ; then
-				update-alternatives --install "/usr/bin/jar" "jar" "$UPDATEALTERNATIVESPATH/bin/jar" 1
-				update-alternatives --set "jar" "$UPDATEALTERNATIVESPATH/bin/jar"
-			fi
-			
-			# add javadoc commandline tool
-			if [ -f "$INSTALLDIR/$DIR/bin/javadoc" ] ; then
-				update-alternatives --install "/usr/bin/javadoc" "javadoc" "$UPDATEALTERNATIVESPATH/bin/javadoc" 1
-				update-alternatives --set "javadoc" "$UPDATEALTERNATIVESPATH/bin/javadoc"
-			fi
-
-			# add java process list tool
-			if [ -f "$INSTALLDIR/$DIR/bin/jps" ] ; then
-				update-alternatives --install "/usr/bin/jps" "jps" "$UPDATEALTERNATIVESPATH/bin/jps" 1
-				update-alternatives --set "jps" "$UPDATEALTERNATIVESPATH/bin/jps"
-			fi
-
-			# java compiler
-			if [ -f "$INSTALLDIR/$DIR/bin/javac" ] ; then
-				update-alternatives --install "/usr/bin/javac" "javac" "$UPDATEALTERNATIVESPATH/bin/javac" 1
-				update-alternatives --set "javac" "$UPDATEALTERNATIVESPATH/bin/javac"
-			fi
+			for i in ${JAVA_PROCS[@]} ; do
+				echo "Installing alternatives for '$i'"
+				update-alternatives --install "/usr/bin/$i" "$i" "$UPDATEALTERNATIVESPATH/bin/$i" 1
+				echo "Updating '$i'"
+				update-alternatives --set "$i" "$UPDATEALTERNATIVESPATH/bin/$i"
+			done
 		fi
 
 		rm -rf "$TMP/$$"
